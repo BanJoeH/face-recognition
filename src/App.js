@@ -6,13 +6,10 @@ import Logo from './components/Logo/Logo.js';
 import ImageLinkForm from './components/ImageLinkForm/ImageLinkForm.js';
 import Rank from './components/Rank/Rank.js';
 import Particles from 'react-particles-js';
-import Clarifai from 'clarifai';
 import SignIn from './components/SignIn/SignIn.js';
 import Registration from './components/Registration/Registration.js';
 
-const app = new Clarifai.App({
-  apiKey: 'eb58449b870a4b96acc0ed2d956ae7ca'
- });
+
 
 const particlesOptions = {
   particles: {
@@ -25,18 +22,37 @@ const particlesOptions = {
       }
     }
   }
-
+const initialState = {
+  input: '',
+  imageUrl: '',
+  box: {},
+  route: 'signin',
+  isSignedIn: false,
+  user: {
+    id: '',
+    name: '',
+    email: '',
+    entries: 0,
+    joined: '',
+  }
+}
 class App extends Component {
   constructor() {
     super();
-    this.state= {
-      input: '',
-      imageUrl: '',
-      box: {},
-      route: 'signin',
-      isSignedIn: false,
+    this.state= initialState;
     }
+  
+
+  loadUser = (data) => {
+    this.setState({user:{
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      entries: data.entries,
+      joined: data.joined,
+    }})
   }
+
 
   calcFaceLocation = (data) =>{
     const clarifaiFace = data.outputs[0].data.regions[0].region_info.bounding_box;
@@ -55,23 +71,51 @@ class App extends Component {
     this.setState({box: box});
   }
 
-  onInputChange= (event) => {
+  onInputChange = (event) => {
     this.setState({input: event.target.value});
   }
 
+  
+  enter = (event) => {
+    if (event.key ==='Enter') {
+        this.onButtonSubmit();
+    }
+  }
+  
+
   onButtonSubmit = () => {
     this.setState({imageUrl : this.state.input})
-    app.models
-      .predict(
-        Clarifai.FACE_DETECT_MODEL,
-        this.state.input)
-      .then(response => this.displayFaceBox(this.calcFaceLocation(response)))
+      fetch('https://mighty-gorge-60170.herokuapp.com/imageurl', {
+        method: 'post',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({
+            input: this.state.input,
+        })
+      })
+      .then(response => response.json())
+      .then(response => {
+        if(response) {
+          fetch('https://mighty-gorge-60170.herokuapp.com/image',{
+            method: 'put',
+            headers: {'content-type': 'application/json'},
+            body: JSON.stringify({
+                id: this.state.user.id,
+            })
+          })
+          .then(response => response.json())
+          .then(count => {
+            this.setState(Object.assign(this.state.user, {entries: count}))
+          })
+          .catch(console.log)
+        }
+        this.displayFaceBox(this.calcFaceLocation(response))
+      })
       .catch(err => console.log(err));
   }
 
   onRouteChange = (route) => {
     if (route === 'signout') {
-      this.setState({isSignedIn: false})
+      this.setState(initialState)
     }else if (route === 'home') {
       this.setState({isSignedIn: true})
     }
@@ -90,17 +134,30 @@ class App extends Component {
         { route ==='home' 
           ? <div>
               <Logo />
-              <Rank />
+              <Rank 
+              name={this.state.user.name} 
+              entries={this.state.user.entries}
+              />
               <ImageLinkForm 
               onInputChange={this.onInputChange} 
               onButtonSubmit={this.onButtonSubmit} 
+              enter={this.enter}
               />
-              <FaceRecognition box={box} imageUrl={imageUrl}/>
+              <FaceRecognition 
+              box={box} 
+              imageUrl={imageUrl}
+              />
             </div>
           : (
             this.state.route === 'signin' 
-            ? <SignIn onRouteChange={this.onRouteChange} />
-            : <Registration onRouteChange={this.onRouteChange} />
+            ? <SignIn 
+            loadUser={this.loadUser} 
+            onRouteChange={this.onRouteChange} 
+            />
+            : <Registration 
+            loadUser={this.loadUser} 
+            onRouteChange={this.onRouteChange} 
+            />
             )
         }
       </div>
